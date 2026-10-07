@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Cookie
+from app.core.redis import redis_client
+
 
 
 router = APIRouter(
@@ -22,3 +24,65 @@ async def get_session():
             "identificacion": "123456789"
         }
     }
+
+@router.get("/redis-test")
+async def redis_test():
+
+    try:
+        pong = await redis_client.ping()
+
+        return {
+            "redis": True,
+            "ping": pong
+        }
+
+    except Exception as e:
+
+        return {
+            "redis": False,
+            "error": str(e)
+        }
+
+@router.get("/redis-session-test")
+async def redis_session_test(
+    nexuraSID: str | None = Cookie(default=None)
+):
+
+    if not nexuraSID:
+        return {
+            "error": "No se recibió nexuraSID"
+        }
+
+    try:
+
+        keys = []
+
+        async for key in redis_client.scan_iter(
+            match=f"*{nexuraSID}*"
+        ):
+            keys.append(key)
+
+        result = []
+
+        for key in keys:
+
+            key_type = await redis_client.type(key)
+
+            ttl = await redis_client.ttl(key)
+
+            result.append({
+                "key": key,
+                "type": key_type,
+                "ttl": ttl
+            })
+
+        return {
+            "session_received": True,
+            "keys_found": result
+        }
+
+    except Exception as e:
+
+        return {
+            "error": str(e)
+        }
