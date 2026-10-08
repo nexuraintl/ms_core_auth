@@ -1,0 +1,58 @@
+# azure-pipelines.yml — ms_core_auth
+#
+# Despliegue directo a Cloud Run via Workload Identity Federation (WIF), sin GitHub.
+# Reemplaza al antiguo puente de sincronizacion a GitHub: la service connection de ADO
+# habla directo con GCP.
+#
+# El trigger dispara segun la rama que RECIBE el push (es decir, la rama destino de un
+# PR ya fusionado) — no importa de donde vino el PR:
+#   qa     -> Cloud Run QA           (qam-core-auth)
+#   master -> Cloud Run PREPRODUCCION (prem-core-auth)
+# Ambos ambientes viven en el mismo proyecto GCP (pre-qa-functions), por eso comparten
+# service connection. Cuando el servicio de PRODUCCION este listo se agrega un
+# deployment adicional para 'main' (con Environment de aprobacion manual), igual que en
+# ms_core_answercode.
+#
+# Autenticacion: WIF (sin llaves) con la extension "Google Cloud Auth" (GcpWifAuth@0).
+# Los pasos estan en ci/deploy-cloudrun-wif.yml. El build+deploy corre en Google Cloud
+# Build (gcloud builds submit --config=cloudbuild.yaml), sin repo conectado a Cloud Build.
+
+trigger:
+  branches:
+    include:
+      - qa
+      - master
+
+pool:
+  vmImage: "ubuntu-latest"
+
+jobs:
+  # ============================================================
+  # QA: despliegue directo por WIF
+  # ============================================================
+  - ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/qa') }}:
+      - job: DeployQA
+        displayName: 'Desplegar a QA (WIF, sin GitHub)'
+        steps:
+          - template: ci/deploy-cloudrun-wif.yml
+            parameters:
+              serviceConnection: gcp-pre-qa-functions
+              projectId: pre-qa-functions
+              serviceName: qam-core-auth
+              arProjectId: pre-qa-functions
+              arRepository: cloud-run-source-deploy
+
+  # ============================================================
+  # PREPRODUCCION: despliegue directo por WIF
+  # ============================================================
+  - ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/master') }}:
+      - job: DeployPre
+        displayName: 'Desplegar a PREPRODUCCION (WIF, sin GitHub)'
+        steps:
+          - template: ci/deploy-cloudrun-wif.yml
+            parameters:
+              serviceConnection: gcp-pre-qa-functions
+              projectId: pre-qa-functions
+              serviceName: prem-core-auth
+              arProjectId: pre-qa-functions
+              arRepository: cloud-run-source-deploy
