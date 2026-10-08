@@ -8,9 +8,9 @@
 # PR ya fusionado) — no importa de donde vino el PR:
 #   qa     -> Cloud Run QA           (qam-core-auth)
 #   master -> Cloud Run PREPRODUCCION (prem-core-auth)
-# Ambos ambientes viven en el mismo proyecto GCP (pre-qa-functions), por eso comparten
-# service connection. Cuando el servicio de PRODUCCION este listo se agrega un
-# deployment adicional para 'main' (con Environment de aprobacion manual), igual que en
+# Ambos ambientes viven en el mismo proyecto GCP (nexura-preproduccion-qa, us-east1), por
+# eso comparten service connection. Cuando el servicio de PRODUCCION este listo se agrega
+# un deployment adicional para 'main' (con Environment de aprobacion manual), igual que en
 # ms_core_answercode.
 #
 # Autenticacion: WIF (sin llaves) con la extension "Google Cloud Auth" (GcpWifAuth@0).
@@ -36,11 +36,12 @@ jobs:
         steps:
           - template: ci/deploy-cloudrun-wif.yml
             parameters:
-              serviceConnection: gcp-pre-qa-functions
-              projectId: pre-qa-functions
+              serviceConnection: gcp-nexura-preproduccion-qa
+              projectId: nexura-preproduccion-qa
               serviceName: qam-core-auth
-              arProjectId: pre-qa-functions
+              arProjectId: nexura-preproduccion-qa
               arRepository: cloud-run-source-deploy
+              region: us-east1
 
   # ============================================================
   # PREPRODUCCION: despliegue directo por WIF
@@ -51,8 +52,9 @@ jobs:
         steps:
           - template: ci/deploy-cloudrun-wif.yml
             parameters:
-              serviceConnection: gcp-pre-qa-functions
-              projectId: pre-qa-functions
+              serviceConnection: gcp-nexura-preproduccion-qa
+              projectId: nexura-preproduccion-qa
               serviceName: prem-core-auth
-              arProjectId: pre-qa-functions
+              arProjectId: nexura-preproduccion-qa
               arRepository: cloud-run-source-deploy
+              region: us-east1

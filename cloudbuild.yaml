@@ -59,10 +59,10 @@ images:
 # (QA usa qam-core-auth).
 substitutions:
   _SERVICE_NAME: prem-core-auth
-  _AR_HOSTNAME: us-central1-docker.pkg.dev
-  _AR_PROJECT_ID: pre-qa-functions
+  _AR_HOSTNAME: us-east1-docker.pkg.dev
+  _AR_PROJECT_ID: nexura-preproduccion-qa
   _AR_REPOSITORY: cloud-run-source-deploy
-  _DEPLOY_REGION: us-central1
+  _DEPLOY_REGION: us-east1
   _PLATFORM: managed
   _TRIGGER_ID: manual
 
