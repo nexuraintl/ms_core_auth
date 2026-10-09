@@ -3,8 +3,9 @@
 # Sincroniza qa y master hacia GitHub (nexuraintl/ms_core_auth). Un trigger de Cloud Build
 # conectado a ese repo construye y despliega en Cloud Run (proyecto nexura-preproduccion-qa):
 #   master -> prem-core-auth      qa -> qam-core-auth (cuando exista)
-# Si el repo no existe en GitHub lo crea (privado). Requiere la variable de pipeline secreta
-# GITHUB_TOKEN_NEXURAINTL (scope 'repo' con permiso para crear repos en la org).
+# nexuraintl es una cuenta de usuario de GitHub: el repo debe existir (privado) y el dueño del
+# token ser su dueño o colaborador con escritura. Requiere la variable de pipeline secreta
+# GITHUB_TOKEN_NEXURAINTL (scope 'repo').
 #
 # El esquema definitivo (WIF, sin GitHub) esta listo en azure-pipelines-wif.yml +
 # ci/deploy-cloudrun-wif.yml + cloudbuild.yaml: cuando exista la service connection
@@ -65,65 +66,51 @@ steps:
     displayName: "Detectar nombre repo"
 
   # 4️⃣ Verificar existencia del repo en GitHub — crearlo si no existe
+  # nexuraintl es una cuenta de USUARIO de GitHub (no una organizacion): solo el token de
+  # esa misma cuenta puede crear repos en ella (POST /user/repos). Con el token de otra
+  # persona el repo debe existir ya y la persona ser colaboradora con permiso de escritura.
   - script: |
       echo "Verificando existencia del repo en GitHub..."
       echo "Repo: $(GITHUB_ORG)/$(REPO_NAME)"
 
-      # Consultar la API de GitHub para verificar si el repo existe
       HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
         -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" \
         -H "Accept: application/vnd.github.v3+json" \
         "https://api.github.com/repos/$(GITHUB_ORG)/$(REPO_NAME)")
-
       echo "HTTP status GitHub API: $HTTP_STATUS"
 
       if [ "$HTTP_STATUS" = "200" ]; then
+        echo "Repo ya existe en GitHub: $(GITHUB_ORG)/$(REPO_NAME)"
+        exit 0
+      fi
+
+      if [ "$HTTP_STATUS" != "404" ]; then
+        echo "ERROR: respuesta inesperada de la API de GitHub ($HTTP_STATUS). Verificar GITHUB_TOKEN_NEXURAINTL (scope 'repo', autorizado por SSO si aplica)."
+        exit 1
+      fi
+
+      TOKEN_LOGIN=$(curl -s -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" https://api.github.com/user | sed -n 's/.*"login": *"\([^"]*\)".*/\1/p' | head -1)
+      echo "El token pertenece al usuario de GitHub: $TOKEN_LOGIN"
+
+      if [ "$TOKEN_LOGIN" != "$(GITHUB_ORG)" ]; then
         echo "======================================="
-        echo "Repo ya existe en GitHub"
-        echo "$(GITHUB_ORG)/$(REPO_NAME)"
-        echo "======================================="
-      elif [ "$HTTP_STATUS" = "404" ]; then
-        echo "Repo no existe. Creando en GitHub..."
-
-        CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" \
-          -X POST \
-          -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" \
-          -H "Accept: application/vnd.github.v3+json" \
-          "https://api.github.com/orgs/$(GITHUB_ORG)/repos" \
-          -d "{
-            \"name\": \"$(REPO_NAME)\",
-            \"private\": true,
-            \"auto_init\": false,
-            \"description\": \"Sincronizado desde Azure DevOps\"
-          }")
-
-        CREATE_STATUS=$(echo "$CREATE_RESPONSE" | tail -1)
-        CREATE_BODY=$(echo "$CREATE_RESPONSE" | head -1)
-
-        echo "Respuesta creación (HTTP $CREATE_STATUS):"
-        echo "$CREATE_BODY"
-
-        if [ "$CREATE_STATUS" = "201" ]; then
-          echo "======================================="
-          echo "Repo creado exitosamente en GitHub"
-          echo "$(GITHUB_ORG)/$(REPO_NAME)"
-          echo "======================================="
-        else
-          echo "======================================="
-          echo "ERROR: No se pudo crear el repo en GitHub"
-          echo "HTTP status: $CREATE_STATUS"
-          echo "Verificar que GITHUB_TOKEN_NEXURAINTL tiene scope 'repo'"
-          echo "======================================="
-          exit 1
-        fi
-      else
-        echo "======================================="
-        echo "ERROR: Respuesta inesperada de la API de GitHub"
-        echo "HTTP status: $HTTP_STATUS"
-        echo "Verificar que GITHUB_TOKEN_NEXURAINTL es válido y tiene scope 'repo'"
+        echo "ERROR: el repo $(GITHUB_ORG)/$(REPO_NAME) NO existe (o el token no tiene acceso)."
+        echo "$(GITHUB_ORG) es una cuenta de usuario: solo su dueño puede crear repos en ella."
+        echo "Pedir al dueño que cree el repo PRIVADO '$(REPO_NAME)' (vacio, sin README)"
+        echo "y agregue a '$TOKEN_LOGIN' como colaborador con permiso de escritura."
         echo "======================================="
         exit 1
       fi
+
+      echo "Repo no existe. Creando en GitHub..."
+      CREATE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" \
+        -H "Accept: application/vnd.github.v3+json" \
+        https://api.github.com/user/repos \
+        -d "{\"name\": \"$(REPO_NAME)\", \"private\": true, \"auto_init\": false, \"description\": \"Sincronizado desde Azure DevOps\"}")
+      echo "HTTP status creacion: $CREATE_STATUS"
+      [ "$CREATE_STATUS" = "201" ] || { echo "ERROR: no se pudo crear el repo"; exit 1; }
+      echo "Repo creado: $(GITHUB_ORG)/$(REPO_NAME)"
     env:
       GITHUB_TOKEN_NEXURAINTL: $(GITHUB_TOKEN_NEXURAINTL)
     displayName: "Verificar o crear repo en GitHub"
