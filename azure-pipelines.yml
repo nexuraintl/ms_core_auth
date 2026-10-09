@@ -3,7 +3,8 @@
 # Sincroniza qa y master hacia GitHub (nexuraintl/ms_core_auth). Un trigger de Cloud Build
 # conectado a ese repo construye y despliega en Cloud Run (proyecto nexura-preproduccion-qa):
 #   master -> prem-core-auth      qa -> qam-core-auth (cuando exista)
-# Requiere la variable de pipeline secreta GITHUB_TOKEN_NEXURAINTL (scope 'repo').
+# Si el repo no existe en GitHub lo crea (privado). Requiere la variable de pipeline secreta
+# GITHUB_TOKEN_NEXURAINTL (scope 'repo' con permiso para crear repos en la org).
 #
 # El esquema definitivo (WIF, sin GitHub) esta listo en azure-pipelines-wif.yml +
 # ci/deploy-cloudrun-wif.yml + cloudbuild.yaml: cuando exista la service connection
@@ -63,30 +64,69 @@ steps:
       echo "##vso[task.setvariable variable=REPO_NAME]$REPO_NAME"
     displayName: "Detectar nombre repo"
 
-  # 4️⃣ Validar existencia repo GitHub
+  # 4️⃣ Verificar existencia del repo en GitHub — crearlo si no existe
   - script: |
-      echo "Validando existencia del repo GitHub..."
+      echo "Verificando existencia del repo en GitHub..."
+      echo "Repo: $(GITHUB_ORG)/$(REPO_NAME)"
 
-      GITHUB_URL="https://$(GITHUB_TOKEN_NEXURAINTL)@github.com/$(GITHUB_ORG)/$(REPO_NAME).git"
+      # Consultar la API de GitHub para verificar si el repo existe
+      HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" \
+        -H "Accept: application/vnd.github.v3+json" \
+        "https://api.github.com/repos/$(GITHUB_ORG)/$(REPO_NAME)")
 
-      echo "Repo destino:"
-      echo "https://github.com/$(GITHUB_ORG)/$(REPO_NAME).git"
+      echo "HTTP status GitHub API: $HTTP_STATUS"
 
-      git ls-remote "$GITHUB_URL" > /dev/null 2>&1
-
-      if [ $? -ne 0 ]; then
+      if [ "$HTTP_STATUS" = "200" ]; then
         echo "======================================="
-        echo "ERROR: El repo NO existe en GitHub"
-        echo "Repo esperado:"
+        echo "Repo ya existe en GitHub"
         echo "$(GITHUB_ORG)/$(REPO_NAME)"
+        echo "======================================="
+      elif [ "$HTTP_STATUS" = "404" ]; then
+        echo "Repo no existe. Creando en GitHub..."
+
+        CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" \
+          -X POST \
+          -H "Authorization: token $(GITHUB_TOKEN_NEXURAINTL)" \
+          -H "Accept: application/vnd.github.v3+json" \
+          "https://api.github.com/orgs/$(GITHUB_ORG)/repos" \
+          -d "{
+            \"name\": \"$(REPO_NAME)\",
+            \"private\": true,
+            \"auto_init\": false,
+            \"description\": \"Sincronizado desde Azure DevOps\"
+          }")
+
+        CREATE_STATUS=$(echo "$CREATE_RESPONSE" | tail -1)
+        CREATE_BODY=$(echo "$CREATE_RESPONSE" | head -1)
+
+        echo "Respuesta creación (HTTP $CREATE_STATUS):"
+        echo "$CREATE_BODY"
+
+        if [ "$CREATE_STATUS" = "201" ]; then
+          echo "======================================="
+          echo "Repo creado exitosamente en GitHub"
+          echo "$(GITHUB_ORG)/$(REPO_NAME)"
+          echo "======================================="
+        else
+          echo "======================================="
+          echo "ERROR: No se pudo crear el repo en GitHub"
+          echo "HTTP status: $CREATE_STATUS"
+          echo "Verificar que GITHUB_TOKEN_NEXURAINTL tiene scope 'repo'"
+          echo "======================================="
+          exit 1
+        fi
+      else
+        echo "======================================="
+        echo "ERROR: Respuesta inesperada de la API de GitHub"
+        echo "HTTP status: $HTTP_STATUS"
+        echo "Verificar que GITHUB_TOKEN_NEXURAINTL es válido y tiene scope 'repo'"
         echo "======================================="
         exit 1
       fi
-
-      echo "Repo GitHub validado correctamente"
     env:
       GITHUB_TOKEN_NEXURAINTL: $(GITHUB_TOKEN_NEXURAINTL)
-    displayName: "Validar repo GitHub"
+    displayName: "Verificar o crear repo en GitHub"
 
   # 5️⃣ Sincronizar rama hacia GitHub
   - script: |
