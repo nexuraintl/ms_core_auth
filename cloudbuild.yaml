@@ -16,6 +16,7 @@
 #  - La SA que ejecuta el build (deploy-sa) necesita: escribir en el Artifact Registry,
 #    roles/run.developer, actuar como la SA de runtime del servicio y leer el bucket de
 #    staging <proyecto>_cloudbuild.
+# HFPV
 
 steps:
   # Build
