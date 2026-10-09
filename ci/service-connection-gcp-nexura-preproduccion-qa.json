@@ -1,0 +1,27 @@
+{
+  "name": "gcp-nexura-preproduccion-qa",
+  "type": "gcpWifEndpoint",
+  "url": "https://www.googleapis.com/",
+  "description": "WIF hacia GCP nexura-preproduccion-qa (sin llaves)",
+  "owner": "Library",
+  "authorization": {
+    "scheme": "None",
+    "parameters": {
+      "serviceAccount": "azure-deployer@nexura-preproduccion-qa.iam.gserviceaccount.com",
+      "workloadIdentityProvider": "projects/999421923761/locations/global/workloadIdentityPools/azure-devops-pool/providers/azure-devops-vstoken",
+      "universe": ""
+    }
+  },
+  "data": {},
+  "isShared": false,
+  "serviceEndpointProjectReferences": [
+    {
+      "name": "gcp-nexura-preproduccion-qa",
+      "description": "",
+      "projectReference": {
+        "id": "4250ff49-5be7-445c-9e85-f5a7c7587dab",
+        "name": "Nexura Platform Microservicios"
+      }
+    }
+  ]
+}
