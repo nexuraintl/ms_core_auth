@@ -47,42 +47,46 @@ async def redis_test():
 async def redis_session_test(
     nexuraSID: str | None = Cookie(default=None)
 ):
-
     if not nexuraSID:
         return {
-            "error": "No se recibió nexuraSID"
+            "session_received": False,
+            "authenticated": False,
+            "message": "No se recibió la cookie nexuraSID"
         }
 
+    # La clave de Redis usa el prefijo PHPREDIS_SESSION
+    redis_key = f"PHPREDIS_SESSION:{nexuraSID}"
+
     try:
+        # Verificar si existe la sesión
+        exists = await redis_client.exists(redis_key)
 
-        keys = []
+        if not exists:
+            return {
+                "session_received": True,
+                "session_found": False,
+                "authenticated": False,
+                "message": "La sesión no existe en Redis o expiró"
+            }
 
-        async for key in redis_client.scan_iter(
-            match=f"*{nexuraSID}*"
-        ):
-            keys.append(key)
-
-        result = []
-
-        for key in keys:
-
-            key_type = await redis_client.type(key)
-
-            ttl = await redis_client.ttl(key)
-
-            result.append({
-                "key": key,
-                "type": key_type,
-                "ttl": ttl
-            })
+        # Consultar información técnica sin exponer el contenido
+        key_type = await redis_client.type(redis_key)
+        ttl = await redis_client.ttl(redis_key)
+        session_data = await redis_client.get(redis_key)
 
         return {
             "session_received": True,
-            "keys_found": result
+            "session_found": True,
+            "authenticated": False,
+            "redis_key_type": key_type,
+            "ttl_seconds": ttl,
+            "session_data_length": len(session_data) if session_data else 0,
+            "message": "Sesión encontrada en Redis; falta validar su contenido"
         }
 
-    except Exception as e:
-
-        return {
-            "error": str(e)
-        }
+    except Exception:
+        # Evita devolver credenciales, datos internos o detalles de conexión
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible consultar la sesión en Redis"
+        )
