@@ -136,7 +136,7 @@ steps:
 
       echo "Push hacia GitHub..."
 
-      git push github HEAD:$(BRANCH_NAME) --force -v
+      git push github HEAD:refs/heads/$(BRANCH_NAME) --force -v
 
       PUSH_STATUS=$?
 
