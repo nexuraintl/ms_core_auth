@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Cookie
+from fastapi import APIRouter, Cookie, HTTPException
 from app.core.redis import redis_client
-
-
+from app.services.session_service import session_service
 
 router = APIRouter(
     prefix="/core/auth",
@@ -10,24 +9,53 @@ router = APIRouter(
 
 
 @router.get("/session")
-async def get_session():
-     return {
-        "authenticated": True,
-        "session_id": "mock-session-id",
-        "user": {
-            "uid": 123,
-            "id": 123,
-            "nombre": "Usuario de Prueba",
-            "login": "usuario.prueba",
-            "email": "usuario.prueba@nexura.com.co",
-            "tipo_doc": "CC",
-            "identificacion": "123456789"
+async def get_session(
+    nexuraSID: str | None = Cookie(default=None)
+):
+    if not nexuraSID:
+        return {
+            "authenticated": False,
+            "message": "No se recibió la cookie nexuraSID"
         }
-    }
+
+    try:
+        session = await session_service.get_session(nexuraSID)
+
+        if not session:
+            return {
+                "authenticated": False,
+                "message": "La sesión no existe en Redis o expiró"
+            }
+
+        if not session.get("valid"):
+            return {
+                "authenticated": False,
+                "message": "La sesión no tiene una estructura válida",
+                "reason": session.get("reason")
+            }
+
+        return {
+            "authenticated": True,
+            "session_id": nexuraSID,
+            "user": session["user"],
+            "session_info": {
+                "uid": session["uid"],
+                "time_over": session.get("time_over"),
+                "time_session_check": session.get(
+                    "time_session_check"
+                )
+            }
+        }
+
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible validar la sesión"
+        )
+
 
 @router.get("/redis-test")
 async def redis_test():
-
     try:
         pong = await redis_client.ping()
 
@@ -36,12 +64,12 @@ async def redis_test():
             "ping": pong
         }
 
-    except Exception as e:
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="No fue posible conectar con Redis"
+        )
 
-        return {
-            "redis": False,
-            "error": str(e)
-        }
 
 @router.get("/redis-session-test")
 async def redis_session_test(
@@ -54,11 +82,9 @@ async def redis_session_test(
             "message": "No se recibió la cookie nexuraSID"
         }
 
-    # La clave de Redis usa el prefijo PHPREDIS_SESSION
     redis_key = f"PHPREDIS_SESSION:{nexuraSID}"
 
     try:
-        # Verificar si existe la sesión
         exists = await redis_client.exists(redis_key)
 
         if not exists:
@@ -69,7 +95,6 @@ async def redis_session_test(
                 "message": "La sesión no existe en Redis o expiró"
             }
 
-        # Consultar información técnica sin exponer el contenido
         key_type = await redis_client.type(redis_key)
         ttl = await redis_client.ttl(redis_key)
         session_data = await redis_client.get(redis_key)
@@ -80,12 +105,13 @@ async def redis_session_test(
             "authenticated": False,
             "redis_key_type": key_type,
             "ttl_seconds": ttl,
-            "session_data_length": len(session_data) if session_data else 0,
-            "message": "Sesión encontrada en Redis; falta validar su contenido"
+            "session_data_length": (
+                len(session_data) if session_data else 0
+            ),
+            "message": "Sesión encontrada en Redis"
         }
 
     except Exception:
-        # Evita devolver credenciales, datos internos o detalles de conexión
         raise HTTPException(
             status_code=503,
             detail="No fue posible consultar la sesión en Redis"
