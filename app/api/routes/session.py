@@ -34,10 +34,10 @@ async def get_session(
                 "reason": session.get("reason")
             }
 
-        return {
+       return {
             "authenticated": True,
-            "session_id": nexuraSID,
             "user": session["user"],
+            "modules": session.get("modules", []),
             "session_info": {
                 "uid": session["uid"],
                 "time_over": session.get("time_over"),
