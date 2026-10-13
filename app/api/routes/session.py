@@ -34,7 +34,7 @@ async def get_session(
                 "reason": session.get("reason")
             }
 
-       return {
+        return {
             "authenticated": True,
             "user": session["user"],
             "modules": session.get("modules", []),
