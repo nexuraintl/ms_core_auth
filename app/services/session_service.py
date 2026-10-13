@@ -13,7 +13,7 @@ class SessionService:
     def _parse_php_session(raw_data: str | bytes) -> dict[str, Any]:
         """
         Interpreta una sesión PHP con formato:
-        variable|valor_serializado_variable|valor_serializado
+        variable|valor_serializado
         """
         if isinstance(raw_data, str):
             raw_data = raw_data.encode("utf-8")
@@ -22,7 +22,6 @@ class SessionService:
         session: dict[str, Any] = {}
 
         while stream.tell() < len(raw_data):
-            # Leer el nombre de la variable hasta el separador "|".
             name_bytes = bytearray()
 
             while True:
@@ -41,9 +40,10 @@ class SessionService:
             name = name_bytes.decode("utf-8")
 
             if not name:
-                raise ValueError("La sesión contiene una variable sin nombre")
+                raise ValueError(
+                    "La sesión contiene una variable sin nombre"
+                )
 
-            # Leer exactamente un valor PHP serializado.
             value = phpserialize.load(
                 stream,
                 decode_strings=True
@@ -62,7 +62,6 @@ class SessionService:
 
         redis_key = f"{self.SESSION_PREFIX}{session_id}"
 
-        # Consultar la sesión en Redis.
         raw_data = await redis_client.get(redis_key)
 
         if raw_data is None:
@@ -70,18 +69,20 @@ class SessionService:
 
         try:
             session = self._parse_php_session(raw_data)
+
         except (ValueError, UnicodeDecodeError, TypeError):
             return {
                 "valid": False,
                 "reason": "invalid_session_format"
             }
+
         except Exception:
             return {
                 "valid": False,
                 "reason": "session_parse_error"
             }
 
-        # Verificar la estructura básica de la sesión.
+        # Datos principales del usuario.
         uid = session.get("uid")
         info_usuario = session.get("infoUsuario")
 
@@ -91,12 +92,21 @@ class SessionService:
                 "reason": "missing_user_data"
             }
 
-        # Conservar los datos de control para validar la vigencia
-        # según las reglas reales de autenticación de Nexura.
+        # Módulos asociados a la sesión.
+        modulos = session.get("modulos_paneladmin", [])
+
+        # Evitar exponer el hash de contraseña.
+        user_data = {
+            key: value
+            for key, value in info_usuario.items()
+            if key != "passwd"
+        }
+
         return {
             "valid": True,
             "uid": uid,
-            "user": info_usuario,
+            "user": user_data,
+            "modules": modulos,
             "time_over": session.get("timeOver"),
             "time_session_check": session.get("timeSessionCheck")
         }
