@@ -2,3 +2,6 @@ fastapi
 uvicorn[standard]
 redis
 phpserialize
+email-validator
+sqlalchemy
+aiomysql
