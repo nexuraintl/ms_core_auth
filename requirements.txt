@@ -8,3 +8,4 @@ aiomysql
 greenlet
 google-auth
 cryptography
+requests
