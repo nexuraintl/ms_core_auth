@@ -21,9 +21,8 @@ class PermissionsService:
         query = text("""
             SELECT opcion
             FROM tn_user_permsmod
-            WHERE cliente = :client_id
-              AND uid = :uid
-              AND modulo = :modulo
+            WHERE  uid = :uid
+             AND modulo = :modulo
             ORDER BY opcion
         """)
 
